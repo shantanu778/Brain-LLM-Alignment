@@ -32,19 +32,18 @@ def train(model, data, optimizer, criterion, batch_size, seq_len, clip, device):
     
     for idx in tqdm(range(0, num_batches - 1, seq_len), desc='Training: ',leave=False):  # The last batch can't be a src
         optimizer.zero_grad()
-        hidden = model.detach_hidden(hidden)
-
         src, target = get_batch(data, seq_len, num_batches, idx)
         src, target = src.to(device), target.to(device)
         batch_size = src.shape[0]
         #print(src.shape, target.shape)
-        prediction, hidden = model(src, hidden)                  
-        loss = criterion(prediction, target)
+        output, prediction, hidden = model(src, hidden)                  
+        loss = criterion(prediction.reshape(batch_size*seq_len, -1) , target.reshape(-1))
         
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
         optimizer.step()
         epoch_loss += loss.item() * seq_len
+        hidden = model.detach_hidden(hidden)
     return epoch_loss / num_batches
 
 def evaluate(model, data, criterion, batch_size, seq_len, device):
@@ -58,14 +57,14 @@ def evaluate(model, data, criterion, batch_size, seq_len, device):
 
     with torch.no_grad():
         for idx in tqdm(range(0, num_batches - 1, seq_len)):
-            hidden = model.detach_hidden(hidden)
             src, target = get_batch(data, seq_len, num_batches, idx)
             src, target = src.to(device), target.to(device)
             batch_size= src.shape[0]
 
-            prediction, hidden = model(src, hidden)
-            loss = criterion(prediction, target)
+            output, prediction, hidden = model(src, hidden)
+            loss = criterion(prediction.reshape(batch_size*seq_len, -1) , target.reshape(-1))
             epoch_loss += loss.item() * seq_len
+            hidden = model.detach_hidden(hidden)
     return epoch_loss / num_batches
 
 

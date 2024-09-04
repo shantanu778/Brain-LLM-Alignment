@@ -31,21 +31,22 @@ def get_data(dataset, vocab, batch_size):
 
 
 def get_char(dataset, vocab, batch_size):
-    data = []                                                   
-    for example in dataset:
-        if example['tokens']:   
-            # print(example['text'])                                              
-            tokens = [vocab[token] for token in example['tokens']] 
-            data.extend(tokens)                                    
-    data = torch.LongTensor(data)                                 
+    # data = []                                                   
+    # for example in dataset:
+    #     if example['tokens']:   
+    #         # print(example['text'])                                              
+    #         tokens = [vocab[token] for token in example['tokens']] 
+    #         data.extend(tokens)  
+    # print(dataset['tokens'])                                  
+    data = torch.LongTensor(dataset['tokens'])                                 
     num_batches = data.shape[0] // batch_size 
     data = data[:num_batches * batch_size]                       
-    data = data.view(batch_size, num_batches)          
+    data = data.view(batch_size, num_batches)        
     return data
 
 
 def get_batch(data, seq_len, num_batches, idx):
     src = data[:, idx:idx+seq_len]                   
-    target = data[:, idx+seq_len]             
+    target = data[:, idx+1:idx+seq_len+1]             
     return src, target
 

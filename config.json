@@ -1,0 +1,20 @@
+{
+    "vocab": "vocab",
+    "epochs": 10,
+    "corpus_type": "plain",
+    "model_type": "gpt",
+    "model": "best-val-gpt",
+    "test": false,
+    "batch_size": 64,
+    "embedding_dim": 512,             
+    "hidden_dim": 512,                
+    "num_layers": 2,                  
+    "dropout_rate": 0.4,              
+    "tie_weights": true,                  
+    "lr": 1e-5,
+    "seq_len": 100,
+    "clip": 1,
+    "weight_decay" : 1e-1,
+    "beta1" : 0.9,
+    "beta2" : 0.95
+}

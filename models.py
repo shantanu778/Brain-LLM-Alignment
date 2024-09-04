@@ -24,11 +24,13 @@ class Custom_LSTM(nn.Module):
         self.init_weights()
 
     def forward(self, src, hidden):
-        embedding = self.dropout(self.embedding(src))
+        x = self.embedding(src)
+        # print(x.shape)
+        embedding = self.dropout(x)
         output, hidden = self.lstm(embedding, hidden)          
         output = self.dropout(output) 
-        prediction = self.fc(output[:,-1])
-        return prediction, hidden
+        prediction = self.fc(output)
+        return output, prediction, hidden
 
     
     def init_weights(self):

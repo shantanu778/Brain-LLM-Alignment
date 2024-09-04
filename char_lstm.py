@@ -95,7 +95,7 @@ def main():
 
     str_to_ind =  {ch:i for i, ch in enumerate(chars)}
     ind_to_str =  {i:ch for i, ch in enumerate(chars)}
-    encode = lambda example: {'tokens': list(c for c in example['text'])}
+    encode = lambda example: {'tokens': list(str_to_ind[c] for c in example['text'])}
     decode = lambda l: ''.join([ind_to_str[i] for i in l])
 
     d = datasets.Dataset.from_dict({'text':text})
@@ -127,18 +127,20 @@ def main():
     dropout_rate = config["dropout_rate"]            
     tie_weights = config["tie_weights"]                  
     lr = config["lr"]
-
-    model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights).to(device)
-
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f'The model has {num_params:,} trainable parameters')
-
+    weight_decay = config["weight_decay"]
+    beta1 = config["beta1"]
+    beta2 = config["beta2"]
     n_epochs = config["epochs"]
     seq_len = config["seq_len"]
     clip = config["clip"]
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0)
+    model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights).to(device)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(beta1, beta2))
+    criterion = nn.CrossEntropyLoss()
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f'The model has {num_params:,} trainable parameters')
+    
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=5)
     
     if test:
         print(f"{'='*20} Testing {'='*20}")
