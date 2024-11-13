@@ -1,0 +1,21 @@
+{
+    "vocab": "vocab",
+    "epochs": 50,
+    "corpus_type": "functless",
+    "model_type": "lstm",
+    "token_type": "char",
+    "model": "best-val-lstm-175",
+    "test": false,
+    "batch_size": 32,
+    "embedding_dim": 768,             
+    "hidden_dim": 768,                
+    "num_layers": 2,                  
+    "dropout_rate": 0.4,              
+    "tie_weights": true,                  
+    "lr": 1e-3,
+    "seq_len": 175,
+    "clip": 0.25,
+    "weight_decay" : 1e-1,
+    "beta1" : 0.9,
+    "beta2" : 0.95
+}
