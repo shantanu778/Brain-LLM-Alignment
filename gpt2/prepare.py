@@ -13,7 +13,7 @@ import numpy as np
 from glob import glob
 
 # download the tiny shakespeare dataset
-input_file_path = os.path.join(os.path.dirname(__file__), 'input.txt')
+# input_file_path = os.path.join(os.path.dirname(__file__), 'input.txt')
 # if not os.path.exists(input_file_path):
 #     data_url = 'https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt'
 #     with open(input_file_path, 'w') as f:
@@ -28,15 +28,15 @@ args = parser.parse_args()
 f = open(args.file_name)
 
 config = json.load(f)
-if not os.path.exists(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/'):
-    os.makedirs(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/')
+if not os.path.exists(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/'):
+    os.makedirs(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/')
 
-with open(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/config.json', 'w') as f:
+with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/config.json', 'w') as f:
     json.dump(config, f)
     f.close()
 
 data = ''
-for file in glob(f'{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
+for file in glob(f'./{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
     print(file)
     with open(file, encoding="utf8") as f:
         data += f.read()
@@ -76,23 +76,23 @@ val_ids = encode(val_data)
 test_ids = encode(test_data)
 print(f"train has {len(train_ids):,} tokens")
 print(f"val has {len(val_ids):,} tokens")
-print(f"val has {len(test_ids):,} tokens")
+print(f"test has {len(test_ids):,} tokens")
 
 # export to bin files
 train_ids = np.array(train_ids, dtype=np.uint16)
 # print(train_ids[:100])
 val_ids = np.array(val_ids, dtype=np.uint16)
 test_ids = np.array(test_ids, dtype=np.uint16)
-np.save(os.path.join(os.path.dirname(__file__), f'{config["corpus_type"]}/train.npy'), train_ids)
-np.save(os.path.join(os.path.dirname(__file__), f'{config["corpus_type"]}/val.npy'), val_ids)
-np.save(os.path.join(os.path.dirname(__file__), f'{config["corpus_type"]}/test.npy'), test_ids)
+np.save(f'./{config["corpus_type"]}/train.npy', train_ids)
+np.save(f'./{config["corpus_type"]}/val.npy', val_ids)
+np.save(f'./{config["corpus_type"]}/test.npy', test_ids)
 # save the meta information as well, to help us encode/decode later
 meta = {
     'vocab_size': vocab_size,
     'itos': itos,
     'stoi': stoi,
 }
-with open(os.path.join(os.path.dirname(__file__), f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/meta.pkl'), 'wb') as f:
+with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/meta.pkl', 'wb') as f:
     pickle.dump(meta, f)
 
 # length of dataset in characters:  1115394

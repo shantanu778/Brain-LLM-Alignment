@@ -1,5 +1,6 @@
 import os
 import json
+import pickle
 import argparse
 from glob import glob
 import torch
@@ -19,6 +20,8 @@ from models import Custom_LSTM
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(0)
 print(f"Torch Version: {torch.__version__}, Device: {device}")
+
+dir_path = os.path.dirname(__file__)
 
 def train(model, data, optimizer, criterion, batch_size, seq_len, clip, device):
     
@@ -128,17 +131,19 @@ def main():
 
     config = json.load(f)
 
-    if not os.path.exists(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/'):
-        os.makedirs(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/')
-    with open(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/config.json', 'w') as f:
+    if not os.path.exists(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/'):
+        os.makedirs(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/')
+
+    with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/config.json', 'w') as f:
         json.dump(config, f)
         f.close()
+
     batch_size = config['batch_size']
     random_seed = 42
     test = args.test
 
     text = []
-    for file in glob(f'{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
+    for file in glob(f'./{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
         print(file)
         with open(file) as f:
             text.extend(f.readlines())
@@ -165,37 +170,48 @@ def main():
         fn_kwargs={'tokenizer': tokenizer})
         if test:
             print("Test")
-            vocab = torch.load(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth')
+            vocab = torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth')
             test_data = get_data(tokenized_dataset['test'], vocab, batch_size)
         else:
             vocab = create_vocab(tokenized_dataset['train'])
             print("Saving Vocabulary")
-            torch.save(vocab, f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth')
+            torch.save(vocab, f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth')
             train_data = get_data(tokenized_dataset['train'], vocab, batch_size)
             valid_data = get_data(tokenized_dataset['valid'], vocab, batch_size)
         # print(d['train'][:10])
     else:
         print(f'{10*"="} Applying Character based Tokenization {10*"="}')
-        vocab = sorted(set(" ".join(text)))
-        vocab_size=len(vocab)
-        str_to_ind =  {ch:i for i, ch in enumerate(vocab)}
-        ind_to_str =  {i:ch for i, ch in enumerate(vocab)}
-        encode = lambda example: {'tokens': list(str_to_ind[c] for c in example['text'])}
-        decode = lambda l: ''.join([ind_to_str[i] for i in l])
+        
         # tokenized_dataset = d.map(encode, remove_columns=['text'], batched=True)
         # print(d['test'])
         if test:
-            test_data = get_char(d["test"], str_to_ind, batch_size)
+            meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl'
+            with open(meta_path, 'rb') as f:
+                meta = pickle.load(f)
+
+            vocab_size = meta['vocab_size']
+            print(f"Vocabualry Size: {vocab_size}")
+            stoi = meta['stoi']
+            test_data = get_char(d["test"], stoi, batch_size)
         else:
+            vocab = sorted(set(" ".join(text)))
+            vocab_size=len(vocab)
+            str_to_ind =  {ch:i for i, ch in enumerate(vocab)}
+            ind_to_str =  {i:ch for i, ch in enumerate(vocab)}
+            encode = lambda example: {'tokens': list(str_to_ind[c] for c in example['text'])}
+            decode = lambda l: ''.join([ind_to_str[i] for i in l])
             train_data = get_char(d['train'], str_to_ind, batch_size)
             valid_data = get_char(d['valid'], str_to_ind, batch_size)
-    
-    
-        with open(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth', 'w') as f:
-            json.dump(vocab, f)
-            f.close()
+       
+            meta = {
+                'vocab_size': vocab_size,
+                'itos': ind_to_str,
+                'stoi': str_to_ind,
+            }
+            with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl', 'wb') as f:
+                pickle.dump(meta, f)
 
-    vocab_size = len(vocab)
+    vocab_size = vocab_size
     embedding_dim = config["embedding_dim"]             # 400 in the paper
     hidden_dim = config["hidden_dim"]                # 1150 in the paper
     num_layers = config["num_layers"]                 # 3 in the paper
@@ -222,7 +238,7 @@ def main():
     
     if test:
         print(f"{'='*20} Testing {'='*20}")
-        model.load_state_dict(torch.load(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt',  map_location=device))
+        model.load_state_dict(torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt'))
         test_loss = evaluate(model, test_data, criterion, batch_size, seq_len, device)
         print(f'Test Perplexity: {math.exp(test_loss):.3f}')
     else:
@@ -244,7 +260,7 @@ def main():
             
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss
-                torch.save(model.state_dict(), f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt')
+                torch.save(model.state_dict(), f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt')
                 count = 0
                 print(f'\tTrain Perplexity: {math.exp(train_loss):.3f}')
                 print(f'\tValid Perplexity: {math.exp(valid_loss):.3f}')

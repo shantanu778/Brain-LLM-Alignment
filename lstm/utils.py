@@ -18,7 +18,7 @@ def create_vocab(tokenized_dataset):
 def get_data(dataset, vocab, batch_size):
     data = []                                                   
     for example in dataset:
-        print(example)
+        # print(example)
         if example['tokens']:   
             # print(example['tokens'])                                   
             example['tokens'].append('<eos>')             
@@ -47,7 +47,7 @@ def get_data_bpe(dataset, batch_size):
 
 
 def get_char(dataset, vocab, batch_size):
-    print(vocab)
+    # print(vocab)
     data = []                                                   
     for example in dataset:
         # print(example['text'])
