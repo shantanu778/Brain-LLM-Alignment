@@ -16,7 +16,7 @@ import torch
 import json
 from dsutils import make_word_ds, make_phoneme_ds, make_semantic_model_gpt, make_semantic_model_gpt_word, make_semantic_model, make_semantic_model_word
 from lstm.models import Custom_LSTM
-from gpt2.train_gpt2 import GPTConfig, GPT
+from gpt2.main import GPTConfig, GPT
 # Load TextGrids
 from stimulus_utils import load_grids_for_stories
 # Load TRfiles

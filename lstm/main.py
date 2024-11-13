@@ -1,23 +1,27 @@
-import re
 import os
-import argparse
-import math
 import json
+import pickle
+import argparse
+from glob import glob
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from tqdm import tqdm
-from glob import glob
+from torch.utils.data import Dataset, DataLoader
 from datasets.dataset_dict import DatasetDict
-from datasets import Dataset
+import math
+import datasets
 import torchtext
+from tqdm import tqdm
+from utils import get_char, get_data, get_batch, create_vocab
+# from main import train, evaluate
 from models import Custom_LSTM
-from utils import get_data, create_vocab, get_batch
 
-# def remove_non_alphabetic(title):
-#     return re.sub('[^a-zA-Z]', ' ', title)
+# Check if CUDA is available (i.e., if at least one GPU is available)
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+torch.manual_seed(0)
+print(f"Torch Version: {torch.__version__}, Device: {device}")
 
-
+dir_path = os.path.dirname(__file__)
 
 def train(model, data, optimizer, criterion, batch_size, seq_len, clip, device):
     
@@ -67,47 +71,90 @@ def evaluate(model, data, criterion, batch_size, seq_len, device):
             
     return epoch_loss / num_batches
 
+# class TextDataset(Dataset):
+#     def __init__(self, text, sequence_length):
+#         self.text = text
+#         self.sequence_length = sequence_length
+#         self.text_length = len(text) - sequence_length
+
+#     def __len__(self):
+#         return self.text_length
+
+#     def __getitem__(self, idx):
+#         seq = self.text[idx: idx + self.sequence_length]
+#         next_char = self.text[idx + self.sequence_length]
+#         return torch.tensor(seq['tokens'], dtype=torch.long), torch.tensor(next_char['tokens'], dtype=torch.long)
 
 
-if __name__ == '__main__':
+# class LSTMModel(nn.Module):
+#     def __init__(self, vocab_size, embedding_dim, hidden_dim, n_layers, dropout_rate):
+#         super(LSTMModel, self).__init__()
+#         self.num_layers = n_layers
+#         self.hidden_dim = hidden_dim
+#         self.embedding_dim = embedding_dim
+#         self.dropout = nn.Dropout(dropout_rate)
+#         self.embedding = nn.Embedding(vocab_size, embedding_dim)
+#         self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=n_layers, dropout=dropout_rate, batch_first=True)
+#         self.fc = nn.Linear(hidden_dim, vocab_size)
+
+#     def forward(self, x, hidden):
+#         x = self.embedding(x)
+#         out, hidden = self.lstm(x, hidden)
+#         out = self.dropout(out)
+#         out = self.fc(out[:,-1])
+#         return out, hidden
+
+#     def init_hidden(self, batch_size, device):
+#         hidden = torch.zeros(self.num_layers, batch_size, self.hidden_dim).to(device)
+#         cell = torch.zeros(self.num_layers, batch_size, self.hidden_dim).to(device)
+#         return hidden, cell
+
+#     def detach_hidden(self, hidden):
+#         hidden, cell = hidden
+#         hidden = hidden.detach()
+#         cell = cell.detach()
+#         return hidden, cell
+
+
+
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file_name", type=str,
                     help="Pass configuration json file")
  
     parser.add_argument('--test', default=False, action='store_true', help="Flag to do Test")
+    parser.add_argument('--char', default=False, action='store_true', help="Flag to Train Word Based Model")
+
     args = parser.parse_args()
 
     f = open(args.file_name)
 
     config = json.load(f)
 
-    # print(config['vocab'])
-    if not os.path.exists(f'{config["corpus_type"]}/word/models/'):
-        os.makedirs(f'{config["corpus_type"]}/word/models/')
-    with open(f'{config["corpus_type"]}/word/models/config.json', 'w') as f:
+    if not os.path.exists(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/'):
+        os.makedirs(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/')
+
+    with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/config.json', 'w') as f:
         json.dump(config, f)
-        f.close()    
-    
+        f.close()
 
     batch_size = config['batch_size']
     random_seed = 42
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    torch.manual_seed(0)
     test = args.test
-    c = []
-    for file in glob(f'{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
+
+    text = []
+    for file in glob(f'./{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
         print(file)
         with open(file) as f:
-            c.extend(f.readlines())
+            text.extend(f.readlines())
 
+    
 
-    #text = list(map(remove_non_alphabetic, c))
+    d = datasets.Dataset.from_dict({'text':text})
 
-    data = Dataset.from_dict({'text':c})
-
-
-    train_test = data.train_test_split(test_size=0.2, seed=random_seed)
-    test_valid = train_test['test'].train_test_split(test_size=0.5, seed=random_seed)
+    random_seed = 42
+    train_test = d.train_test_split(test_size=0.2, shuffle=False, seed=random_seed)
+    test_valid = train_test['test'].train_test_split(test_size=0.5, shuffle=False, seed=random_seed)
 
     d = DatasetDict({
         'train': train_test['train'],
@@ -115,52 +162,83 @@ if __name__ == '__main__':
         'valid': test_valid['train']
         })
 
-
-    tokenizer = torchtext.data.utils.get_tokenizer('basic_english')
-    tokenize_data = lambda example, tokenizer: {'tokens': tokenizer(example['text'])}  
-    tokenized_dataset = d.map(tokenize_data, remove_columns=['text'], 
-    fn_kwargs={'tokenizer': tokenizer})
-    # print(tokenized_dataset['train'][:10])
-    
-    if test:
-        print("Test")
-        vocab = torch.load(f"{config['corpus_type']}/word/models/{config['vocab']}.pth")
+    if not args.char:
+        print(f'{10*"="} Applying Word based Tokenization {10*"="}')
+        tokenizer = torchtext.data.utils.get_tokenizer('basic_english')
+        tokenize_data = lambda example, tokenizer: {'tokens': tokenizer(example['text'])}  
+        tokenized_dataset = d.map(tokenize_data, remove_columns=['text'], 
+        fn_kwargs={'tokenizer': tokenizer})
+        if test:
+            print("Test")
+            vocab = torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth')
+            test_data = get_data(tokenized_dataset['test'], vocab, batch_size)
+        else:
+            vocab = create_vocab(tokenized_dataset['train'])
+            print("Saving Vocabulary")
+            torch.save(vocab, f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pth')
+            train_data = get_data(tokenized_dataset['train'], vocab, batch_size)
+            valid_data = get_data(tokenized_dataset['valid'], vocab, batch_size)
+        # print(d['train'][:10])
     else:
-        vocab = create_vocab(tokenized_dataset['train'])
-        torch.save(vocab, f"{config['corpus_type']}/word/models/{config['vocab']}.pth")
-    
-    if test:
-        test_data = get_data(tokenized_dataset['test'], vocab, batch_size)
-    else:
-        train_data = get_data(tokenized_dataset['train'], vocab, batch_size)
-        valid_data = get_data(tokenized_dataset['valid'], vocab, batch_size)
-    
-    #test_data = get_data(tokenized_dataset['test'], vocab, batch_size)
+        print(f'{10*"="} Applying Character based Tokenization {10*"="}')
+        
+        # tokenized_dataset = d.map(encode, remove_columns=['text'], batched=True)
+        # print(d['test'])
+        if test:
+            meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl'
+            with open(meta_path, 'rb') as f:
+                meta = pickle.load(f)
 
-    vocab_size = len(vocab)
+            vocab_size = meta['vocab_size']
+            print(f"Vocabualry Size: {vocab_size}")
+            stoi = meta['stoi']
+            test_data = get_char(d["test"], stoi, batch_size)
+        else:
+            vocab = sorted(set(" ".join(text)))
+            vocab_size=len(vocab)
+            str_to_ind =  {ch:i for i, ch in enumerate(vocab)}
+            ind_to_str =  {i:ch for i, ch in enumerate(vocab)}
+            encode = lambda example: {'tokens': list(str_to_ind[c] for c in example['text'])}
+            decode = lambda l: ''.join([ind_to_str[i] for i in l])
+            train_data = get_char(d['train'], str_to_ind, batch_size)
+            valid_data = get_char(d['valid'], str_to_ind, batch_size)
+       
+            meta = {
+                'vocab_size': vocab_size,
+                'itos': ind_to_str,
+                'stoi': str_to_ind,
+            }
+            with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl', 'wb') as f:
+                pickle.dump(meta, f)
+
+    vocab_size = vocab_size
     embedding_dim = config["embedding_dim"]             # 400 in the paper
     hidden_dim = config["hidden_dim"]                # 1150 in the paper
     num_layers = config["num_layers"]                 # 3 in the paper
     dropout_rate = config["dropout_rate"]            
     tie_weights = config["tie_weights"]                  
     lr = config["lr"]
-
-    model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f'The model has {num_params:,} trainable parameters')
-
+    weight_decay = config["weight_decay"]
+    beta1 = config["beta1"]
+    beta2 = config["beta2"]
     n_epochs = config["epochs"]
     seq_len = config["seq_len"]
     clip = config["clip"]
+
+
+    print("Loading LSTM Model")
+    model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights).to(device)
+    # model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=weight_decay)
+    criterion = nn.CrossEntropyLoss()
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f'The model has {num_params:,} trainable parameters')
     
-
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0)
-
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=2)
+    
     if test:
         print(f"{'='*20} Testing {'='*20}")
-        model.load_state_dict(torch.load(f'{config["corpus_type"]}/word/models/{config["model"]}.pt',  map_location=device))
+        model.load_state_dict(torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt'))
         test_loss = evaluate(model, test_data, criterion, batch_size, seq_len, device)
         print(f'Test Perplexity: {math.exp(test_loss):.3f}')
     else:
@@ -169,28 +247,27 @@ if __name__ == '__main__':
         for epoch in range(n_epochs):
             print(f"Epoch: {epoch}")
             
-            if count > 2:
+            if count > 3:
                 print("Early Stopped")
                 break
             train_loss = train(model, train_data, optimizer, criterion, 
         	     batch_size, seq_len, clip, device)
             valid_loss = evaluate(model, valid_data, criterion, batch_size, 
                      seq_len, device)
-
+    
             lr_scheduler.step(valid_loss)
             print(f'\t\t Validation Loss: {valid_loss:.3f}')
-
             
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss
-                torch.save(model.state_dict(), f'{config["corpus_type"]}/word/models/{config["model"]}.pt')
+                torch.save(model.state_dict(), f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt')
                 count = 0
                 print(f'\tTrain Perplexity: {math.exp(train_loss):.3f}')
                 print(f'\tValid Perplexity: {math.exp(valid_loss):.3f}')
+            
             else:
-                count += 1
+                count += 1    
 
-            #print(f'\tTrain Perplexity: {math.exp(train_loss):.3f}')
-            #print(f'\tValid Perplexity: {math.exp(valid_loss):.3f}')
-        
-        
+
+if __name__ == '__main__':
+    main()
