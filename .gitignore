@@ -6,6 +6,19 @@ __pycache__/
 # C extensions
 *.so
 
+# Dataset and Models
+adjless/
+advless/
+contless/
+detless/
+functless/
+nounless/
+pos/
+prepless/
+pronounless/
+svaless/
+verbless/
+
 # Distribution / packaging
 .Python
 build/
