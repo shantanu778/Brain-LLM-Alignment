@@ -18,6 +18,7 @@ prepless/
 pronounless/
 svaless/
 verbless/
+alignment/data/
 
 # Distribution / packaging
 .Python
