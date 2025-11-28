@@ -7,9 +7,17 @@ pip install -r requirements.txt
 ```
 
 # Usage
-To train Language models,
+**Before training a new model change the config file accordingly. ** Such as. courpus_type: "contless"
+
+Step 1. Place your text file in dedicated folder and prepare your dataset using following command:
 
 ```
-python your_preferred_mode/main.py  -f your_preferred_mode/config.json 
+python gpt2/prepare.py  -f gpt2/config.json 
+
+```
+Step 2. Train Language models, 
+
+```
+python gpt2/main.py  -f gpt2/config.json 
 
 ```

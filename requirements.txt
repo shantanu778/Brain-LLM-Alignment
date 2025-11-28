@@ -30,7 +30,8 @@ PyYAML==6.0.2
 regex==2024.11.6
 requests==2.32.3
 six==1.17.0
-tiktoken
+sympy==1.13.1
+tiktoken==0.7.0
 torch==2.1.1+cu121
 torchaudio==2.1.1+cu121
 torchdata==0.7.1
