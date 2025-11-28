@@ -92,7 +92,7 @@ meta = {
     'itos': itos,
     'stoi': stoi,
 }
-with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/meta.pkl', 'wb') as f:
+with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl', 'wb') as f:
     pickle.dump(meta, f)
 
 # length of dataset in characters:  1115394

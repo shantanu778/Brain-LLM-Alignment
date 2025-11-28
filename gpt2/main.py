@@ -370,7 +370,7 @@ def main():
         torch.cuda.manual_seed(1337)
 
 
-    meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/meta.pkl'
+    meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["token_type"]}.pkl'
     with open(meta_path, 'rb') as f:
         meta = pickle.load(f)
 
