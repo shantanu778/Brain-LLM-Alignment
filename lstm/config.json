@@ -1,7 +1,7 @@
 {
     "vocab": "vocab",
-    "epochs": 50,
-    "corpus_type": "functless",
+    "epochs": 2,
+    "corpus_type": "contless",
     "model_type": "lstm",
     "token_type": "char",
     "model": "best-val-lstm-175",
