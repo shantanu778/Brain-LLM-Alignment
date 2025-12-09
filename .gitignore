@@ -19,6 +19,7 @@ pronounless/
 svaless/
 verbless/
 alignment/data/
+Random-corruption-dirs
 
 # Distribution / packaging
 .Python

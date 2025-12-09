@@ -36,7 +36,7 @@ with open(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type
     f.close()
 
 data = ''
-for file in glob(f'./{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
+for file in glob(f'./{config["corpus_type"]}/*.txt'):
     print(file)
     with open(file, encoding="utf8") as f:
         data += f.read()

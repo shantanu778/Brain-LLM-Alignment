@@ -143,7 +143,7 @@ def main():
     test = args.test
 
     text = []
-    for file in glob(f'./{config["corpus_type"]}/*_{config["corpus_type"]}.txt'):
+    for file in glob(f'./{config["corpus_type"]}/*.txt'):
         print(file)
         with open(file) as f:
             text.extend(f.readlines())

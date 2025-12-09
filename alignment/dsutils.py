@@ -102,7 +102,8 @@ def make_semantic_model(ds, model, device):
             src = torch.LongTensor([indices]).to(device)
             _, _, hidden = model(src, hidden)
 
-        v = hidden[:, -1, :].detach().cpu().view(-1).numpy()
+        # print(hidden)
+        v = hidden[-1][:, -1, :].detach().cpu().view(-1).numpy()
         newdata.append(v)
     return DataSequence(np.array(newdata), ds.split_inds, data_times=ds.data_times, tr_times=ds.tr_times)
 
@@ -123,7 +124,7 @@ def make_semantic_model_word(ds, model, device):
           indices = ds.tokenize(" ".join(seq))
           src = torch.LongTensor([indices]).to(device)
           _, _, hidden = model(src, hidden)
-        v = hidden[:, -1, :].detach().cpu().view(-1).numpy()
+        v = hidden[-1][:, -1, :].detach().cpu().view(-1).numpy()
         newdata.append(v)
     return DataSequence(np.array(newdata), ds.split_inds, data_times=ds.data_times, tr_times=ds.tr_times)
 

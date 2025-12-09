@@ -34,7 +34,12 @@ dir_path = os.path.dirname(__file__)
 print(dir_path)
 
 def project_stimuli(allstories, wordseqs, vocab_size, config):
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+    print(f"using device: {device}")
     # Project stimuli
     torch.manual_seed(0)
     if config['model_type']=='lstm':
@@ -45,11 +50,11 @@ def project_stimuli(allstories, wordseqs, vocab_size, config):
         tie_weights = False
         print("Loading LSTM Model")
         model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights)
-        model.load_state_dict(torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt', map_location ='mps'))
+        model.load_state_dict(torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt', map_location = device))
         model.to(device)
     else:
         print("Loading GPT2 Model")
-        checkpoint = torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt', map_location ='mps')
+        checkpoint = torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt', map_location = device)
         gptconf = checkpoint['config']
         model = GPT(gptconf)
         state_dict = checkpoint['model']
@@ -154,7 +159,7 @@ def main():
     print ("delPstim shape: ", delPstim.shape)
 
     # Load responses
-    resptf = tables.open_file("alignment/data/subUTS01_Lperisylv.hf5")
+    resptf = tables.open_file("alignment/data/fmri-responses.hf5")
 
     zRresp = resptf.root.zRresp.read()
     zPresp = resptf.root.zPresp.read()
@@ -178,7 +183,7 @@ def main():
 
     elif args.plain:
         print(f'Loading Plain Linear Model')
-        wt = pickle.load(open(f'plain/wt_{config["model_type"]}.pkl', "rb"))
+        wt = pickle.load(open(f'{config["corpus_type"]}plain/wt_{config["model_type"]}.pkl', "rb"))
         pred = np.dot(delPstim, wt)
         nnpred = np.nan_to_num(pred)
         corrs = np.nan_to_num(np.array([np.corrcoef(zPresp[:,ii], nnpred[:,ii].ravel())[0,1] for ii in range(zPresp.shape[1])]))

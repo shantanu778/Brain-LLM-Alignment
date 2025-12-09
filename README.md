@@ -28,6 +28,15 @@ python gpt2/main.py  -f gpt2/config.json
 ## For LSTM
 
 ```
-python lstm/main.py  -f lstm/config.json 
+python lstm/main.py -f lstm/config.json --char
 
+```
+
+# Alignment
+Download the preprocessed brain-dataset from here.
+
+## Train encoding model,
+
+```
+python alignment/main.py -f contless/gpt2/char/models/config.json 
 ```
