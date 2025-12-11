@@ -126,8 +126,8 @@ def main():
     # take a look at the projected stimuli
     naked_proj = semanticseqs["naked"]
 
-    print (naked_proj.data.shape) # prints the shape of 'data' as (rows, columns)
-    print (naked_proj.data[:10]) # print the first 10 rows (this will be truncated)
+    # print (naked_proj.data.shape) # prints the shape of 'data' as (rows, columns)
+    # print (naked_proj.data[:10]) # print the first 10 rows (this will be truncated)
     # Downsample stimuli
     interptype = "lanczos" # filter type
     window = 3 # number of lobes in Lanczos filter
