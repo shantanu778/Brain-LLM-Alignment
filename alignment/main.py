@@ -1,13 +1,10 @@
 import os
-import time
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 import argparse
 import torch
 # Run this cell if your computer has a 'retina' or high DPI display. It will make the figures look much nicer.
-from matplotlib.pyplot import figure, cm
-import matplotlib.pyplot as plt
 import numpy as np
 from npp import zscore
 import logging
@@ -92,7 +89,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file_name", type=str,
                     help="Pass configuration json file")
- 
+    
+    parser.add_argument('--sub', type=str, required=True, help="Subject ID")
+    parser.add_argument('--roi', type=str, required=True, help="Region of Interest")
     parser.add_argument('--test', default=False, action='store_true', help="Flag to do Test")
     parser.add_argument('--plain', default=False, action='store_true', help="Flag to Use Linear Model trained on plain text")
 
@@ -110,9 +109,9 @@ def main():
 
     # These are lists of the stories
     # Rstories are the names of the training (or Regression) stories, which we will use to fit our models
-    Rstories = ['alternateithicatom', 'avatar', 'howtodraw', 'legacy',
-                'life', 'myfirstdaywiththeyankees', 'naked',
-                'odetostepfather', 'souls', 'undertheinfluence']
+    Rstories = ["alternateithicatom", "howtodraw", "sloth", "naked", "souls", "avatar", "legacy", "myfirstdaywiththeyankees", "odetostepfather", "undertheinfluence"]
+    
+    # Rstories = ['stagefright']
 
     # Pstories are the test (or Prediction) stories (well, story), which we will use to test our models
     Pstories = ['wheretheressmoke']
@@ -124,10 +123,10 @@ def main():
     semanticseqs = project_stimuli(allstories, wordseqs, vocab_size, config)
 
     # take a look at the projected stimuli
-    naked_proj = semanticseqs["naked"]
+    # naked_proj = semanticseqs["naked"]
 
-    print (naked_proj.data.shape) # prints the shape of 'data' as (rows, columns)
-    print (naked_proj.data[:10]) # print the first 10 rows (this will be truncated)
+    # print (naked_proj.data.shape) # prints the shape of 'data' as (rows, columns)
+    # print (naked_proj.data[:10]) # print the first 10 rows (this will be truncated)
     # Downsample stimuli
     interptype = "lanczos" # filter type
     window = 3 # number of lobes in Lanczos filter
@@ -159,7 +158,8 @@ def main():
     print ("delPstim shape: ", delPstim.shape)
 
     # Load responses
-    resptf = tables.open_file("alignment/data/fmri-responses.hf5")
+    print(f"Loading responses from subject {args.sub} and ROI {args.roi}")
+    resptf = tables.open_file(f"alignment/data/sub-{args.sub}/sub-{args.sub}_{args.roi}.hf5")
 
     zRresp = resptf.root.zRresp.read()
     zPresp = resptf.root.zPresp.read()
@@ -176,14 +176,14 @@ def main():
     
     if args.test and not args.plain:
         print(f'Loading Plain Linear Model')
-        wt = pickle.load(open(f'{config["corpus_type"]}/wt_{config["model_type"]}.pkl', "rb"))
+        wt = pickle.load(open(f'{config["corpus_type"]}/wt_{args.sub}_{args.roi}_{config["model_type"]}.pkl', "rb"))
         pred = np.dot(delPstim, wt)
         nnpred = np.nan_to_num(pred)
         corrs = np.nan_to_num(np.array([np.corrcoef(zPresp[:,ii], nnpred[:,ii].ravel())[0,1] for ii in range(zPresp.shape[1])]))
 
     elif args.plain:
         print(f'Loading Plain Linear Model')
-        wt = pickle.load(open(f'{config["corpus_type"]}plain/wt_{config["model_type"]}.pkl', "rb"))
+        wt = pickle.load(open(f'{config["corpus_type"]}/wt_{args.sub}_{args.roi}_{config["model_type"]}.pkl', "rb"))
         pred = np.dot(delPstim, wt)
         nnpred = np.nan_to_num(pred)
         corrs = np.nan_to_num(np.array([np.corrcoef(zPresp[:,ii], nnpred[:,ii].ravel())[0,1] for ii in range(zPresp.shape[1])]))
@@ -192,7 +192,8 @@ def main():
                                                             alphas, nboots, chunklen, nchunks,
                                                             singcutoff=1e-10, single_alpha=True)
         
-        with open(f'{config["corpus_type"]}/wt_{config["model_type"]}.pkl', "wb") as f:
+        os.makedirs(f'{config["corpus_type"]}/sub-{args.sub}', exist_ok=True)
+        with open(f'{config["corpus_type"]}/sub-{args.sub}/wt_{args.sub}_{args.roi}_{config["model_type"]}.pkl', "wb") as f:
             pickle.dump(wt, f)
 
 
@@ -224,10 +225,10 @@ def main():
     # nnpred = np.nan_to_num(pred)
 
     if args.plain:
-        with open(f'{config["corpus_type"]}/corrs_{config["model_type"]}_plain.npy', 'wb') as f:
+        with open(f'{config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_plain.npy', 'wb') as f:
             np.save(f, corrs)
     else:
-        with open(f'{config["corpus_type"]}/corrs_{config["model_type"]}.npy', 'wb') as f:
+        with open(f'{config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_{config["model_type"]}.npy', 'wb') as f:
             np.save(f, corrs)
 
     
@@ -330,9 +331,24 @@ def main():
     # HTML("<a target='_blank' href='https://127.0.0.1/:8000'>Click here for viewer</a>")
     # print("Server is running. Press Ctrl+C to stop.")
     # time.sleep(3600)
+    log_file = f'./{config["corpus_type"]}/sub-{args.sub}/log.txt'
+    with open(log_file, 'a') as f:
+        f.write(f'Model: {config["model"]}\n')
+        f.write(f'Corpus Type: {config["corpus_type"]}\n')
+        f.write(f'Model Type: {config["model_type"]}\n')
+        f.write(f'Token Type: {config["token_type"]}\n')
+        f.write(f'Vocabulary: {config["vocab"]}\n')
+        f.write(f'fMRI file: "alignment/data/sub-{args.sub}/sub-{args.sub}_{args.roi}.hf5\n')
+        f.write(f'Train Linear Model Correlations for subject {args.sub} and ROI {args.roi}:\n')
+        f.write(f'zRresp shape: {zRresp.shape}\n')
+        f.write(f'zPresp shape: {zPresp.shape}\n')
+        f.write(f'mask shape: {mask.shape}\n')
+        f.write(f'Corr file: {config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_{config["model_type"]}.npy\n')
+        f.write(f'Weight file: {config["corpus_type"]}/sub-{args.sub}/wt_{args.sub}_{args.roi}_{config["model_type"]}.pkl\n')
 
 
 
 
 if __name__ == '__main__':
+
     main()

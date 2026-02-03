@@ -8,6 +8,7 @@ def load_grid(story, grid_dir="data/grids"):
     The first file that starts with [story] will be loaded, so if there are
     multiple versions of a grid for a story, beward.
     """
+    print(f"Loading grid for story {story} from {grid_dir}")
     gridfile = [os.path.join(grid_dir, gf) for gf in os.listdir(grid_dir) if gf.startswith(story)][0]
     return TextGrid(open(gridfile).read())
 
@@ -99,6 +100,7 @@ def load_generic_trfiles(stories, root="data/trfiles"):
             trf = TRFile(os.path.join(root, "%s.report"%story))
             trdict[story] = [trf]
         except Exception as e:
-            print (e)
+            trdict[story] = []
+            print("Could not load TRFile for story %s: %s"%(story, str(e)))
     
     return trdict

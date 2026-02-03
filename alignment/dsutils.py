@@ -17,6 +17,8 @@ def make_word_ds(vocab_file, flag, grids, trfiles, bad_words=DEFAULT_BAD_WORDS):
         ## Filter out bad words
         goodtranscript = [x for x in grtranscript
                           if x[2].lower().strip("{}").strip() not in bad_words]
+        print(f"Story {st}: {len(grtranscript)} words, {len(goodtranscript)} after filtering.")
+        
         d = DataSequence.from_grid(vocab_file, flag, goodtranscript, trfiles[st][0])
         ds[st] = d
 
