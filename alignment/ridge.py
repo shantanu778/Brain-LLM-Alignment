@@ -4,6 +4,8 @@ import numpy as np
 import logging
 from utils import mult_diag, counter
 import random
+random.seed(42)
+np.random.seed(42)
 import itertools as itools
 
 zs = lambda v: (v-v.mean(0))/v.std(0) ## z-score function

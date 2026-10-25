@@ -3,6 +3,7 @@ import itertools as itools
 from DataSequence import DataSequence
 import torch
 import random
+random.seed(42)
 
 DEFAULT_BAD_WORDS = frozenset(["sentence_start", "sentence_end", "br", "lg", "ls", "ns", "sp"])
 

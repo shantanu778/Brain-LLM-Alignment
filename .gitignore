@@ -6,7 +6,7 @@ __MACOSX/
 
 # C extensions
 *.so
-
+.TOKEN
 
 # Dataset and Models
 adjless/
