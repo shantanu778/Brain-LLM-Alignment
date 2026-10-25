@@ -11,7 +11,7 @@ import logging
 import pickle
 import torch
 import json
-from dsutils import make_word_ds, make_phoneme_ds, make_semantic_model_gpt, make_semantic_model_gpt_word, make_semantic_model, make_semantic_model_word
+from dsutils import make_word_ds, make_phoneme_ds, make_semantic_model_gpt, make_semantic_model, make_semantic_model_gemma
 from lstm.models import Custom_LSTM
 from gpt2.main import GPTConfig, GPT
 # Load TextGrids
@@ -19,6 +19,8 @@ from stimulus_utils import load_grids_for_stories
 # Load TRfiles
 from stimulus_utils import load_generic_trfiles
 from util import make_delayed
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import PeftModel
 # from IPython.display import HTML
 logging.basicConfig(level=logging.DEBUG)
 
@@ -27,7 +29,7 @@ print(torch.__version__)
 dir_path = os.path.dirname(__file__)
 print("Directory Path:", dir_path)
 
-def project_stimuli(allstories, wordseqs, vocab_size, config):
+def project_stimuli(allstories, wordseqs, vocab_size=None, config=None):
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
@@ -46,9 +48,44 @@ def project_stimuli(allstories, wordseqs, vocab_size, config):
         model = Custom_LSTM(vocab_size, embedding_dim, hidden_dim, num_layers, dropout_rate, tie_weights)
         model.load_state_dict(torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt', map_location = device))
         model.to(device)
+    elif config['model_type']=='gemma':
+        flag = 'fine-tuned' if config['fine_tuned'] else 'pre-trained'
+        
+        BASE_MODEL_ID = "google/gemma-3-4b-pt" #
+        if flag == 'fine-tuned':
+            print(f"Loading Gemma Model {config['model']}_{config['hidden_layer']}_layer")
+            BASE_MODEL_ID = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}'
+            adapter_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}'
+        else:
+            print(f"Loading Gemma Model {flag}")
+            BASE_MODEL_ID = "google/gemma-3-4b-pt"
+
+        tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+
+        model = AutoModelForCausalLM.from_pretrained(
+            BASE_MODEL_ID,
+            quantization_config=bnb_config,
+            device_map=device,
+            torch_dtype=torch.bfloat16,
+        )
+
+        if flag == 'fine-tuned':
+            model = PeftModel.from_pretrained(base_model, adapter_path)
+
+        model.to(device)
+        model.eval()
     else:
-        print("Loading GPT2 Model")
-        checkpoint = torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}.pt', map_location = device)
+        print(f"Loading GPT2 Model {config['model']}_{config['hidden_layer']}_layer")
+        checkpoint = torch.load(f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["model"]}_{config["hidden_layer"]}_layer.pt', weights_only=False, map_location = device)
         gptconf = checkpoint['config']
         model = GPT(gptconf)
         state_dict = checkpoint['model']
@@ -63,6 +100,8 @@ def project_stimuli(allstories, wordseqs, vocab_size, config):
         # semanticseqs[story] = make_semantic_model(wordseqs[story], model, device)
         if config['model_type']=='lstm':
             semanticseqs[story] = make_semantic_model(wordseqs[story], model, device)
+        elif config['model_type']=='gemma':
+            semanticseqs[story] = make_semantic_model_gemma(wordseqs[story], model, tokenizer, device)
         else:
             semanticseqs[story] = make_semantic_model_gpt(wordseqs[story], model, device)
 
@@ -98,11 +137,25 @@ def llm_representation(args=None):
 
     config = json.load(f)
     print(config)
-    meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl'
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
+    if config['model_type'] == "lstm":
+        print(f"Loading LSTM Model {config['model']}_{config['hidden_layer']}_layer")
+        meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl'
+        with open(meta_path, 'rb') as f:
+            meta = pickle.load(f)
 
-    vocab_size = meta['vocab_size']
+        vocab_size = meta['vocab_size']
+    elif config['model_type'] == "gemma":
+        print(f"Loading Gemma Model {config['model']}_{config['hidden_layer']}_layer")
+        vocab_size = None # not needed for gemma
+        meta_path = None
+    else:
+        print(f"Loading GPT2 Model {config['model']}_{config['hidden_layer']}_layer")
+        meta_path = f'./{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/{config["vocab"]}.pkl'
+        with open(meta_path, 'rb') as f:
+            meta = pickle.load(f)
+
+        vocab_size = meta['vocab_size']
+    
 
     # These are lists of the stories
     # Rstories are the names of the training (or Regression) stories, which we will use to fit our models
@@ -155,7 +208,7 @@ def llm_representation(args=None):
     print ("delPstim shape: ", delPstim.shape)
 
     # save delayed llm representations
-    hdf5_filepath = Path(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/stories_rep.hf5')
+    hdf5_filepath = Path(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/stories_rep_layer_{config["hidden_layer"]}.hf5')
     hdf5_filepath.parent.mkdir(parents=True, exist_ok=True)
 
 

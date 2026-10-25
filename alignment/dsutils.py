@@ -147,12 +147,20 @@ def make_semantic_model_gpt(ds, model, device):
         with torch.no_grad():
             indices = ds.encode(" ".join(seq))
             src = torch.LongTensor([indices]).to(device)
-            last_hidden_state, logits, loss = model(src)
-        v = last_hidden_state[:, -1, :].detach().cpu().view(-1).numpy()
+            n_hidden_layer, last_hidden_state, logits, loss = model(src)
+        v = n_hidden_layer[:, -1, :].detach().cpu().view(-1).numpy()
+        # print(v.shape)
         newdata.append(v)
     return DataSequence(np.array(newdata), ds.split_inds, data_times=ds.data_times, tr_times=ds.tr_times)
 
-def make_semantic_model_gpt_word(ds, model, tokenizer, device):
+def last_token_pool(hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    """Last non-padding token."""
+    # position of last real token per sample
+    last_idx = attention_mask.sum(dim=1) - 1             # [B]
+    batch_idx = torch.arange(hidden_state.size(0), device=hidden_state.device)
+    return hidden_state[batch_idx, last_idx]             # [B, H]
+
+def make_semantic_model_gemma(ds, model, tokenizer, device):
     newdata = []
     l, r = 0, 1
     seq_len = 20
@@ -165,12 +173,15 @@ def make_semantic_model_gpt_word(ds, model, tokenizer, device):
             r += 1
         random.shuffle(seq)
         with torch.no_grad():
-            inputs = ds.gpt_tokenize(" ".join(seq), tokenizer).to(device)
+            inputs = ds.gemma_tokenize(" ".join(seq), tokenizer).to(device)
             # src = torch.LongTensor([indices]).to(device)
             outputs = model(**inputs, output_hidden_states=True)
-            last_hidden_state = outputs.hidden_states[-1]
+            last_hidden = outputs.hidden_states[-1]              # [B, T, H]
+            # if pooling == "last":
+            emb = last_token_pool(last_hidden, inputs["attention_mask"])
             
-        v = last_hidden_state[:, -1, :].detach().cpu().view(-1).numpy()
+        v = emb.float().cpu().view(-1).numpy()
+        # print(v.shape)
         newdata.append(v)
     return DataSequence(np.array(newdata), ds.split_inds, data_times=ds.data_times, tr_times=ds.tr_times)
 

@@ -83,9 +83,10 @@ class GPTConfig:
 
 class GPT(nn.Module):
 
-    def __init__(self, config):
+    def __init__(self, config, hidden_layer=None):
         super().__init__()
         self.config = config
+        self.hidden_layer = hidden_layer if hidden_layer is not None else config.n_layer - 1 # default to the last layer, but allow user to specify any layer to extract
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
@@ -122,15 +123,19 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
         x = tok_emb + pos_emb
         # forward the blocks of the transformer
-        for block in self.transformer.h:
-            x = block(x)
+        for i, block in enumerate(self.transformer.h):
+            assert self.hidden_layer < len(self.transformer.h), f"hidden_layer index {self.hidden_layer} is out of bounds for number of layers {len(self.transformer.h)}. Extracting last hidden layer instead."
+            if i == self.hidden_layer:
+                n_hidden_layer = block(x) # (B, T, n_embd)
+                # print(f"{i} hidden layer shape: {n_hidden_layer.shape}") 
+            x = block(x)   
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x) # (B, T, vocab_size)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-        return x, logits, loss
+        return n_hidden_layer, x, logits, loss
 
     @classmethod
     def from_pretrained(cls, model_type):
@@ -192,7 +197,7 @@ class GPT(nn.Module):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
             # forward the model to get the logits for the index in the sequence
-            _, logits, _ = self(idx_cond)
+            _, _, logits, _ = self(idx_cond)
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[:, -1, :] / temperature
             # optionally crop the logits to only the top k options
@@ -409,7 +414,7 @@ def main():
         ckpt_path = os.path.join(log_dir, f'{config["model"]}.pt')
         checkpoint = torch.load(ckpt_path, map_location=device)
         gptconf = checkpoint['config']
-        model = GPT(gptconf).to(device)
+        model = GPT(gptconf, hidden_layer=config['hidden_layer']).to(device)
         state_dict = checkpoint['model']
         unwanted_prefix = '_orig_mod.'
         for k,v in list(state_dict.items()):
@@ -425,7 +430,7 @@ def main():
                 x, y = test_loader.next_batch()
                 x, y = x.to(device), y.to(device)
                 with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-                    last_hidden_layer, logits, loss = model(x, y)
+                    n_hidden_layer, last_hidden_layer, logits, loss = model(x, y)
                 loss = loss / val_loss_steps
                 val_loss_accum += loss.detach()
         if ddp:
@@ -440,7 +445,9 @@ def main():
         with open(log_file, "w") as f: # open for writing to clear the file
             pass
         # create model
-        model = GPT(GPTConfig(vocab_size=224, block_size=512))
+        print("Loading GPT2 Model")
+        # print(GPTConfig())
+        model = GPT(GPTConfig(vocab_size=224, block_size=512), hidden_layer=config['hidden_layer']) # create a GPT model from the config, with the option to specify which hidden layer to extract
         # model = GPT.from_pretrained("gpt2") # or init from OpenAI GPT-2
         model.to(device)
         use_compile = False # torch.compile interferes with HellaSwag eval and Generation. TODO fix
@@ -486,7 +493,7 @@ def main():
                         x, y = val_loader.next_batch()
                         x, y = x.to(device), y.to(device)
                         with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-                            last_hidden_layer, logits, loss = model(x, y)
+                            n_hidden_layer, last_hidden_layer, logits, loss = model(x, y)
                         loss = loss / val_loss_steps
                         val_loss_accum += loss.detach()
                 if ddp:
@@ -498,7 +505,7 @@ def main():
                     if step > 0 and (step % 2500 == 0 or last_step) and val_loss_accum.item()<validation_loss:
                         validation_loss = val_loss_accum.item()
                         # optionally write model checkpoints
-                        checkpoint_path = os.path.join(log_dir, f'{config["model"]}.pt')
+                        checkpoint_path = os.path.join(log_dir, f'{config["model"]}_layer_{config["hidden_layer"]+1}.pt')
                         checkpoint = {
                             'model': raw_model.state_dict(),
                             'config': raw_model.config,
@@ -594,7 +601,7 @@ def main():
                 if ddp:
                     model.require_backward_grad_sync = (micro_step == grad_accum_steps - 1)
                 with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-                    last_hidden_layer, logits, loss = model(x, y)
+                    n_hidden_layer, last_hidden_layer, logits, loss = model(x, y)
                 # we have to scale the loss to account for gradient accumulation,
                 # because the gradients just add on each successive backward().
                 # addition of gradients corresponds to a SUM in the objective, but

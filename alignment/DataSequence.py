@@ -3,7 +3,6 @@ import json
 import torch
 import pickle
 import itertools as itools
-from torchtext import data
 from interpdata import sincinterp2D, gabor_xfm2D, lanczosinterp2D
 
 
@@ -38,6 +37,10 @@ class DataSequence(object):
             # decode = lambda l: ''.join([itos[i] for i in l])
         elif flag == "word":
             self.vocab = torch.load(vocab_file)
+        elif flag == "bpe":
+            self.vocab = None
+        else:
+            self.vocab = None
 
     def encode(self, text):
         return [self.stoi[s] for s in text]
@@ -52,6 +55,17 @@ class DataSequence(object):
         
     def gpt_tokenize(self, text, tokenizer):
         return tokenizer(text, return_tensors="pt")
+
+    def gemma_tokenize(self, text, tokenizer):
+        max_length = 512
+        # print(f"Tokenizing {text} for Gemma...")
+        inputs = tokenizer(
+                    text,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=max_length,
+                )
+        return inputs
         
     def mapdata(self, fun):
         """Creates a new DataSequence where each element of [data] is produced by mapping the

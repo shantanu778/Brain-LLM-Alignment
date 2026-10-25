@@ -29,7 +29,8 @@ def main():
     config = json.load(f)
     print(config)
 
-    lm_rep_file = Path(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/stories_rep.hf5')
+
+    lm_rep_file = Path(f'{config["corpus_type"]}/{config["model_type"]}/{config["token_type"]}/models/stories_rep_layer_{config["hidden_layer"]}.hf5')
     if not lm_rep_file.exists():
         # Pass your arguments as a list of strings, exactly as you would type them in the terminal
         lm_args = ["--file_name", f"{config['corpus_type']}/{config['model_type']}/{config['token_type']}/models/config.json", '--sub', f"{args.sub}"]
@@ -77,7 +78,7 @@ def main():
                                                             singcutoff=1e-10, single_alpha=True)
         
         os.makedirs(f'{config["corpus_type"]}/sub-{args.sub}', exist_ok=True)
-        with open(f'{config["corpus_type"]}/sub-{args.sub}/wt_{args.sub}_{args.roi}_{config["model_type"]}.pkl', "wb") as f:
+        with open(f'{config["corpus_type"]}/sub-{args.sub}/wt_{args.sub}_{args.roi}_{config["model_type"]}_layer_{config["hidden_layer"]}.pkl', "wb") as f:
             pickle.dump(wt, f)
 
 
@@ -109,10 +110,10 @@ def main():
     # nnpred = np.nan_to_num(pred)
 
     if args.plain:
-        with open(f'{config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_plain.npy', 'wb') as f:
+        with open(f'{config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_plain_layer_{config["hidden_layer"]}.npy', 'wb') as f:
             np.save(f, corrs)
     else:
-        with open(f'{config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_{config["model_type"]}.npy', 'wb') as f:
+        with open(f'{config["corpus_type"]}/sub-{args.sub}/corrs_{args.sub}_{args.roi}_{config["model_type"]}_layer_{config["hidden_layer"]}.npy', 'wb') as f:
             np.save(f, corrs)
 
     
@@ -215,7 +216,7 @@ def main():
     # HTML("<a target='_blank' href='https://127.0.0.1/:8000'>Click here for viewer</a>")
     # print("Server is running. Press Ctrl+C to stop.")
     # time.sleep(3600)
-    log_file = f'./{config["corpus_type"]}/sub-{args.sub}/log.txt'
+    log_file = f'./{config["corpus_type"]}/sub-{args.sub}/log_{config["model_type"]}.txt'
     with open(log_file, 'a') as f:
         f.write(f'Model: {config["model"]}\n')
         f.write(f'Corpus Type: {config["corpus_type"]}\n')
