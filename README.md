@@ -197,6 +197,10 @@ datalad install https://github.com/OpenNeuroDatasets/ds003020.git
 cd ds003020
 datalad get .  # Downloads all files (~large)
 ```
+### 5.2 Get individual pre-processed story data 
+```bash
+datalad get derivative/preprocessed_data/UTS01/avatar.hf5
+```
 
 Reference: [OpenNeuro ds003020 v4.0.0](https://openneuro.org/datasets/ds003020/versions/4.0.0)
 Documentation: [datalad handbook — OpenNeuro use case](https://handbook.datalad.org/en/latest/usecases/openneuro.html)
