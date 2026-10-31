@@ -214,13 +214,197 @@ Each HDF5 file contains:
 - `zPresp`: z-scored test responses (n_test_TRs × n_voxels)
 - `mask`: binary voxel mask
 
-These files are derived from the LeBel et al. 2023 preprocessing pipeline. The directory `LeBelAetal2023_moth/` contains intermediate data from that pipeline.
+These files are derived from the LeBel et al. 2023 preprocessing pipeline. The full procedure is documented in `moth_fMRI_by_ROI_method_subUTS01.ipynb` and the companion SPM batch files. The steps below must be performed **once per subject**.
 
-> **[UNRESOLVED]**: The exact preprocessing steps from raw ds003020 NIfTI files to the per-ROI HDF5 files are not fully documented. The pipeline involves:
-> 1. Standard fMRI preprocessing (motion correction, spatial normalization)
-> 2. ROI extraction using the 32 SENSAAS atlas parcels
-> 3. z-scoring and train/test splitting by story
-> 4. The Jupyter notebook `moth_fMRI_by_ROI_method_subUTS01.ipynb` documents parts of this process
+#### 5.2.1 Prerequisites
+
+| Software | Purpose |
+|----------|---------|
+| pycortex | Subject-to-MNI transforms, cortical surface database |
+| SPM25 | Coregistration, reslicing, inverse normalization |
+| CAT12 (≥12.9) | Tissue segmentation for inverse normalization |
+| FSL (fsleyes) | Optional visual inspection |
+
+The pycortex database must be configured with the LeBel et al. 2023 subject data:
+```python
+import cortex
+cortex.database.default_filestore
+# Should point to: /path/to/LeBelAetal2023_moth
+```
+
+Each subject directory in the pycortex database must contain:
+```
+LeBelAetal2023_moth/
+└── sub-UTSXX/
+    ├── anatomicals/raw.nii          # Symlink → ses-1/anat/sub-UTSXX_ses-1_T1w.nii
+    ├── transforms/fullhead/
+    │   ├── reference.nii            # Symlink → derivative/pycortex-db/transforms/reference.nii
+    │   └── mask_thick.nii.gz        # Symlink → derivative/pycortex-db/transforms/mask_thick.nii.gz
+    ├── derivative/preprocessed_data/
+    │   ├── souls.hf5                # Per-story preprocessed fMRI (n_TRs × 81126 voxels)
+    │   ├── wheretheressmoke.hf5     # Test story
+    │   └── ... (11 stories total)
+    ├── rois/                        # Output: SENSAAS ROI masks in subject space
+    └── surfaces/                    # Inflated cortical surfaces for visualization
+```
+
+#### 5.2.2 Step 1 — Compute Subject-to-MNI Transform (Python, once per subject)
+
+```python
+import cortex
+from cortex import mni
+import nibabel as nib
+
+subject = 'sub-UTS01'  # Change for each subject
+xfm = 'fullhead'
+
+# Compute 4×4 affine transform from subject functional space to MNI
+subj_to_mni = cortex.db.get_mnixfm(subject, xfm)
+
+# Create a reference volume in subject space and transform to MNI
+randdata = cortex.Volume.random(subject, xfm)  # shape: (54, 84, 84)
+mni_randdata = mni.transform_to_mni(randdata, subj_to_mni)  # shape: (182, 218, 182)
+
+# Save MNI reference — needed by SPM in the next steps
+mni_randdata.to_filename(f'/path/to/LeBelAetal2023_moth/{subject}/transforms/{subject}_mni_randdata.nii')
+```
+
+Repeat for each subject: `sub-UTS01` through `sub-UTS09`.
+
+#### 5.2.3 Step 2 — Map SENSAAS ROIs to Subject Space (SPM25, outside Python)
+
+The 32 SENSAAS ROIs start in MNI standard space (2mm isotropic). Two SPM batch files transform them to each subject's native functional space:
+
+**Step 2a — Reslice ROIs to match subject MNI dimensions** (`moth_fMRI_by_ROI_SPM25batch_step1.2.mat`):
+- Coregister-reslice each SENSAAS ROI (2×2×2 mm) onto `{subject}_mni_randdata.nii` (1×1×1 mm)
+- Input: 32 SENSAAS ROI NIfTI files in MNI space
+- Output: `r*.nii` resliced ROI files
+
+**Step 2b — Inverse-normalize ROIs to subject space** (`moth_fMRI_by_ROI_SPM25batch_step1.3.mat`):
+1. Coregister `anatomicals/raw.nii` (T1w) onto `transforms/fullhead/reference.nii` (functional reference)
+2. CAT12 segment the coregistered T1w to obtain the inverse deformation field
+3. Apply inverse normalization to warp each ROI from MNI to subject native space
+4. Final coregistration-reslice to match LeBel et al. 2023 axis conventions (frontal-lobe-down axial slices)
+- Output: `rwr*.nii` files — the final ROI masks in subject functional space
+
+**Step 2c — Deploy ROI masks**:
+```bash
+# Move final ROI masks to the subject's rois/ directory
+# (remove intermediate r*.nii and wr*.nii files)
+mv rwr*.nii.gz /path/to/LeBelAetal2023_moth/sub-UTS01/rois/
+```
+
+Repeat Steps 2a–2c for each subject.
+
+> **Note**: The SPM batch `.mat` files are located in `LeBelAetal2023_moth/moth_fMRI_by_ROI/`. They must be edited to update subject-specific paths before running for each subject.
+
+#### 5.2.4 Step 3 — Extract ROI Data from fMRI (Python, per subject × ROI)
+
+```python
+import numpy as np
+import nibabel as nib
+import tables
+from nilearn.maskers import NiftiMasker
+
+subject = 'sub-UTS01'  # Change for each subject
+roi_name = 'G_Frontal_Inf_Tri-1'  # Change for each ROI
+base_path = '/path/to/LeBelAetal2023_moth'
+
+# Load whole-brain mask and ROI mask
+masker = NiftiMasker(mask_img=f'{base_path}/{subject}/transforms/fullhead/mask_thick.nii.gz')
+roi_masker = NiftiMasker(mask_img=f'{base_path}/{subject}/rois/rwr{roi_name}.nii.gz')
+
+# Fit the whole-brain masker on the reference image
+refimg = nib.load(f'{base_path}/{subject}/transforms/fullhead/reference.nii')
+masker.fit_transform(refimg)
+
+# Load and concatenate all story fMRI data
+stories_train = ["alternateithicatom", "howtodraw", "sloth", "naked", "souls",
+                  "avatar", "legacy", "myfirstdaywiththeyankees", "odetostepfather",
+                  "undertheinfluence"]
+stories_test = ["wheretheressmoke"]
+
+def load_story(story):
+    f = tables.open_file(f'{base_path}/{subject}/derivative/preprocessed_data/{story}.hf5')
+    data = f.root.data.read()  # shape: (n_TRs, 81126)
+    f.close()
+    return data
+
+# Concatenate training stories
+train_data = np.concatenate([load_story(s) for s in stories_train], axis=0)
+test_data = np.concatenate([load_story(s) for s in stories_test], axis=0)
+
+# Convert to NIfTI volumes (needed for ROI masking)
+train_nii = masker.inverse_transform(train_data)
+test_nii = masker.inverse_transform(test_data)
+
+# Apply ROI mask → extract voxels within the ROI
+train_roi = roi_masker.fit_transform(train_nii)  # (n_train_TRs, n_roi_voxels)
+test_roi = roi_masker.fit_transform(test_nii)     # (n_test_TRs, n_roi_voxels)
+
+# Z-score
+from alignment.npp import zscore
+zRresp = zscore(train_roi)
+zPresp = zscore(test_roi)
+
+# Create binary mask
+roi_data = nib.load(f'{base_path}/{subject}/rois/rwr{roi_name}.nii.gz').get_fdata()
+mask = (roi_data > 0).astype(np.float32)
+
+# Save as HDF5 for the encoding pipeline
+import h5py
+output_path = f'alignment/data/{subject}/{subject}_rwr{roi_name}.hf5'
+with h5py.File(output_path, 'w') as hf:
+    hf.create_dataset('zRresp', data=zRresp)
+    hf.create_dataset('zPresp', data=zPresp)
+    hf.create_dataset('mask', data=mask)
+```
+
+Repeat for all 9 subjects × 32 ROIs (288 total files).
+
+#### 5.2.5 Step 4 — (Optional) Save Correlation Maps for Group Analysis
+
+After running the encoding model, correlation maps can be saved back to NIfTI in both subject and MNI space for voxelwise group analysis:
+
+```python
+# Subject space
+corr_nii = roi_masker.inverse_transform(corrs.reshape(1, -1))
+corr_nii.to_filename(f'{base_path}/{subject}/derivative/preprocessed_data/{subject}_stories_{roi_name}_correlmap.nii.gz')
+
+# MNI space (for FSL randomise group analysis)
+from cortex import mni
+subj_to_mni = cortex.db.get_mnixfm(subject, 'fullhead')
+corr_mni = mni.transform_to_mni(corr_nii_wrapper, subj_to_mni)
+corr_mni.to_filename(f'{base_path}/{subject}/derivative/preprocessed_data/{subject}_stories_{roi_name}_correlmap_MNI.nii.gz')
+```
+
+#### 5.2.6 The 32 SENSAAS ROIs
+
+| ROI Name | Region |
+|----------|--------|
+| `G_Temporal_Sup-4` | Superior temporal gyrus |
+| `G_Temporal_Mid-3`, `G_Temporal_Mid-4` | Middle temporal gyrus |
+| `G_Temporal_Inf-4` | Inferior temporal gyrus |
+| `S_Sup_Temporal-1`, `-2`, `-3`, `-4` | Superior temporal sulcus |
+| `G_Frontal_Inf_Tri-1` | Inferior frontal gyrus (pars triangularis) |
+| `G_Frontal_Inf_Orb-1` | Inferior frontal gyrus (pars orbitalis) |
+| `G_Frontal_Sup-2` | Superior frontal gyrus |
+| `S_Inf_Frontal-2` | Inferior frontal sulcus |
+| `S_Precentral-3`, `-4` | Precentral sulcus |
+| `G_Supp_Motor_Area-2`, `-3` | Supplementary motor area |
+| `G_SupraMarginal-7` | Supramarginal gyrus |
+| `G_Angular-2` | Angular gyrus |
+| `G_Precuneus-6` | Precuneus |
+| `G_Cingulum_Post-3` | Posterior cingulate |
+| `G_Insula-anterior-1`, `-2`, `-3` | Anterior insula |
+| `G_Fusiform-4` | Fusiform gyrus |
+| `G_Occipital_Inf-1` | Inferior occipital gyrus |
+| `G_ParaHippocampal-1` | Parahippocampal gyrus |
+| `G_Paracentral_Lobule-4` | Paracentral lobule |
+| `G_Hippocampus-2` | Hippocampus |
+| `N_Amygdala-1` | Amygdala |
+| `N_Thalamus-4` | Thalamus |
+| `N_Putamen-2`, `-3` | Putamen |
 
 ### 5.3 Training Corpora
 
@@ -447,7 +631,7 @@ Each condition/model combination uses a JSON config file:
 
 ### Known Limitations
 
-1. **fMRI preprocessing not fully documented**: The pipeline from raw NIfTI (ds003020) to per-ROI HDF5 files requires MATLAB/SPM/CAT12 and is only partially documented in the Jupyter notebook.
+1. **fMRI preprocessing requires external tools**: The pipeline from raw NIfTI (ds003020) to per-ROI HDF5 files requires MATLAB/SPM25/CAT12 (documented in Section 5.2). The SPM batch `.mat` files must be manually edited per subject.
 2. **Gemma results incomplete**: Only 4 of 9 corruption conditions have Gemma results (plain, nounless, verbless, contless, functless).
 3. **Statistical testing scripts missing**: FSL `randomise` commands for group-level permutation testing are not included.
 4. **Wilcoxon signed-rank test script missing**: No script for pairwise statistical comparison between conditions.
